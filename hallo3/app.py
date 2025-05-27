@@ -1,6 +1,5 @@
 import os
 import math
-import gradio as gr
 import torch
 import argparse
 import numpy as np
@@ -21,6 +20,7 @@ from diffusion_video import SATVideoDiffusionEngine
 from arguments import get_args
 
 import uuid
+import sys
 
 def save_video_as_grid_and_mp4_with_audio(video_batch: torch.Tensor, save_path: str, audio_path: str, fps: int = 5, is_padding: bool = False):
     os.makedirs(save_path, exist_ok=True)
@@ -346,7 +346,7 @@ class VideoGenerator:
             filename_saved = save_video_as_grid_and_mp4_with_audio(video, os.path.dirname(output_path), audio_file, fps=self.args.sampling_fps, is_padding=is_padding)
             print(f"Filename: {filename_saved}")
             final_video_path = os.path.join(os.path.dirname(output_path), filename_saved)
-            permanent_output_dir = "output/gradio"
+            permanent_output_dir = "output/cli"
             os.makedirs(permanent_output_dir, exist_ok=True)
             permanent_path = os.path.join(permanent_output_dir, f"video_{os.path.basename(final_video_path)}")
             import shutil
@@ -355,27 +355,51 @@ class VideoGenerator:
             print(f"Video saved to: {permanent_path}")
             return permanent_path
 
-def create_gradio_interface():
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Video Generation from Image and Audio")
+    parser.add_argument("--image", type=str, required=True, help="Path to input image")
+    parser.add_argument("--audio", type=str, required=True, help="Path to audio file")
+    parser.add_argument("--prompt", type=str, default="", help="Text prompt for generation (optional)")
+    parser.add_argument("--output_dir", type=str, default="output/cli", help="Directory to save output video")
+    
+    return parser.parse_args()
+
+def main():
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Validate input files
+    if not os.path.exists(args.image):
+        print(f"Error: Image file {args.image} does not exist")
+        sys.exit(1)
+    
+    if not os.path.exists(args.audio):
+        print(f"Error: Audio file {args.audio} does not exist")
+        sys.exit(1)
+        
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Load the image
+    try:
+        image = Image.open(args.image)
+    except Exception as e:
+        print(f"Error loading image: {e}")
+        sys.exit(1)
+        
+    # Initialize the generator and process the inputs
     generator = VideoGenerator()
+    print(f"Generating video from {args.image} and {args.audio}...")
+    if args.prompt:
+        print(f"Using prompt: {args.prompt}")
     
-    def process(image, audio_file, prompt):
-        output_video = generator.generate_video(image, audio_file, prompt)
-        return output_video
-    
-    interface = gr.Interface(
-        fn=process,
-        inputs=[
-            gr.Image(type="pil", label="Input Image"),
-            gr.Audio(type="filepath", label="Audio File"),
-            gr.Textbox(label="Prompt")
-        ],
-        outputs=gr.Video(label="Generated Video"),
-        title="Halo 3 - Video Generation from Image and Audio",
-        description="Upload an image and audio file, provide a prompt (optional), and generate a video."
-    )
-    
-    return interface
+    try:
+        output_video = generator.generate_video(image, args.audio, args.prompt)
+        print(f"Video generation complete!")
+        print(f"Output saved to: {output_video}")
+    except Exception as e:
+        print(f"Error during video generation: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    interface = create_gradio_interface()
-    interface.launch(share=True)
+    main()
